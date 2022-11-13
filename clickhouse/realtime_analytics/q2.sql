@@ -1,0 +1,1 @@
+select toStartOfHour(timestamp) ,sum(gas_used) from arda_test.blocks group by toStartOfHour(timestamp) order by toStartOfHour(timestamp) desc
