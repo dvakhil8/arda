@@ -1,0 +1,7 @@
+.idea/
+
+clickhouse-native-jdbc*
+
+test*
+
+.gitignore
