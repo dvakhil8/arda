@@ -1,4 +1,4 @@
-reference link to the problem statemnt -> https://gist.github.com/ramkumarvenkat/cb8550dbac0e201c3fb4df6e4708f44e
+reference link to the problem statement -> https://gist.github.com/ramkumarvenkat/cb8550dbac0e201c3fb4df6e4708f44e
 
 ## **Project Setup**
 
@@ -36,7 +36,7 @@ reference link to the problem statemnt -> https://gist.github.com/ramkumarvenkat
 * **consumer/realtime_spark.py** reads path to query as input and run's the query on spark-clickhouse connector. 
 * **consumer/pyspark_consumer.py** starts a spark streaming consumer from kafka and dumps Total value of gas every hour into console / output file .
 * **clickhouse/adhoc.sql** this file contains query which needs to be run on **http://localhost:8123/play** or can pass it through as path parameter to  **consumer/realtime_spark.py** file and fetch results.
-* 
+* **clickhouse/realtime_analytics/*.sql** each file here refers to realtime analytics questions in the problem statement link. 
 
 
 
