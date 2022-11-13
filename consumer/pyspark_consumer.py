@@ -60,9 +60,6 @@ transaction_schema = StructType(
 
 
 class PysparkStreaming:
-    def __int__(self):
-        self.spark = self.getSparkSession()
-
     def getSparkSession(self):
         spark = SparkSession \
             .builder \
