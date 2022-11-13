@@ -1,3 +1,7 @@
+import configparser
+import os
+import sys
+
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import from_json, col, explode, array, from_unixtime, window, row_number, count, \
     to_timestamp, current_timestamp, avg, min, lit
@@ -54,46 +58,62 @@ transaction_schema = StructType(
 
 )
 
-spark = SparkSession \
-    .builder \
-    .appName("blocks_event_spark") \
-    .config("spark.sql.debug.maxToStringFields", "100") \
-    .getOrCreate()
-spark.sparkContext.setLogLevel("warn")
-df = spark \
-    .readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", "localhost:9092") \
-    .option("spark.driver.memory", "2g") \
-    .option("subscribe", "blocks") \
-    .option("startingOffsets", "latest") \
-    .option("spark.streaming.kafka.maxRatePerPartition", "50") \
-    .load()
 
-w = Window.partitionBy(lit(1)).orderBy("block_timestamp_ts").rowsBetween(-5, 0)
-df = df.selectExpr("CAST(value AS STRING)")
-df = df.withColumn("parsed_value", from_json(col('value'), blocks_schema)) \
-    .withColumn("exploded", explode(array("parsed_value"))) \
-    .select("exploded.*")
-df = df.withColumn("block_timestamp_ts", to_timestamp(from_unixtime(df.timestamp)))
-df1 = df.withColumn("MovingAverage", avg('transaction_count').over(w))
-query = df1.writeStream.format("console").start()
-query.awaitTermination()
+class PysparkStreaming:
+    def __int__(self):
+        self.spark = self.getSparkSession()
+
+    def getSparkSession(self):
+        spark = SparkSession \
+            .builder \
+            .appName("blocks_event_spark") \
+            .config("spark.sql.debug.maxToStringFields", "100") \
+            .getOrCreate()
+        spark.sparkContext.setLogLevel("warn")
+        return spark
+
+    def getKafkaStream(self, bootstrap_servers):
+        print(bootstrap_servers)
+        return self.getSparkSession() \
+            .readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", bootstrap_servers) \
+            .option("spark.driver.memory", "2g") \
+            .option("subscribe", "transactions") \
+            .option("startingOffsets", "latest") \
+            .option("spark.streaming.kafka.maxRatePerPartition", "50") \
+            .load()
+
+    def writeStream(self,df):
+        query = df.writeStream.format("console").start()
+        query.awaitTermination()
+
+    def getTotalGasHour(self,df):
+        df = df.selectExpr("CAST(value AS STRING)")
+        df = df.withColumn("parsed_value", from_json(col('value'), transaction_schema)) \
+            .withColumn("exploded", explode(array("parsed_value"))) \
+            .select("exploded.*")
+        df = df.withColumn('event_timestamp', current_timestamp())
+        df = df.withColumn("block_timestamp_ts", to_timestamp(from_unixtime(df.block_timestamp)))
+        df = df.withColumn("block_timestamp_hourly",
+                           to_timestamp(from_unixtime(col('block_timestamp'), "yyyy-MM-dd HH")))
+        df = df.withColumn("gas_value", col('gas') * col('gas_price'))
+        df1 = df.withWatermark("block_timestamp_hourly", "60 minutes").groupby("block_timestamp_hourly").sum(
+            'gas_value')
+        return df1
+    def startStreaming(self, bootstrap_servers):
+        sourceDf = self.getKafkaStream(bootstrap_servers)
+        writeStreamDf = self.getTotalGasHour(sourceDf)
+        self.writeStream(writeStreamDf)
 
 
-# "select * from table where "
+if __name__ == "__main__":
+    if os.environ.get('CONFIG_FILE', -1) != -1:
+        config = configparser.ConfigParser()
+        config.read(os.environ.get('CONFIG_FILE'))
+        kafka_config = config['Kafka']
+        streaming = PysparkStreaming()
+        streaming.startStreaming(kafka_config['bootstrap_servers'])
 
-
-
-# w = Window.partitionBy("block_hash").orderBy('block_timestamp')
-# df = df.selectExpr("CAST(value AS STRING)")
-# df = df.withColumn("parsed_value", from_json(col('value'), transaction_schema)) \
-#     .withColumn("exploded", explode(array("parsed_value"))) \
-#     .select("exploded.*")
-# df = df.withColumn('event_timestamp', current_timestamp())
-# df = df.withColumn("block_timestamp_ts", to_timestamp(from_unixtime(df.block_timestamp)))
-# df = df.withColumn("block_timestamp_hourly", to_timestamp(from_unixtime(col('block_timestamp'), "yyyy-MM-dd HH")))
-# df = df.withColumn("gas_value", col('gas') * col('gas_price'))
-# df1=df.withWatermark("block_timestamp_hourly", "60 minutes").groupby("block_timestamp_hourly").sum('gas_value')
-# query = df1.writeStream.format("console").start()
-# query.awaitTermination()
+    else:
+        raise FileNotFoundError('config file not found. please set CONFIG_FILE env variable')
